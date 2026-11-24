@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
@@ -38,6 +38,15 @@ const EMPTY_F = { name: '', sub: '', pk: '', status: '', integ: '' };
 export default function TenantsPage() {
   const [tenants, setTenants] = useState(seedTenants);
   const [F, setFilters] = useState(EMPTY_F);
+  const headRef = useRef(null);
+  const [head1, setHead1] = useState(34);
+  useLayoutEffect(() => {
+    const el = headRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setHead1(el.getBoundingClientRect().height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [dialog, setDialog] = useState(null); // { mode, initial, editId }
   const [view, setView] = useState(null);
   const [confirm, setConfirm] = useState(null); // { kind:'cancel'|'status', sub, form? }
@@ -75,8 +84,8 @@ export default function TenantsPage() {
   const scNote = { 'Read-Only': 'Users will be able to view studies but not create new ones.', Inactive: 'Users will no longer be able to sign in.' };
 
   return (
-    <div>
-      <div className="mb-[18px] flex items-start gap-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-[18px] flex flex-none items-start gap-4">
         <div>
           <div className="text-[22px] font-semibold tracking-tight">Tenants</div>
           <div className="mt-[3px] text-[13px] text-muted">Onboard and manage customer environments, with their subscription and product packages.</div>
@@ -85,13 +94,14 @@ export default function TenantsPage() {
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ mode: 'add', initial: blank(tenants.length) })} sx={{ height: 38, whiteSpace: 'nowrap', flex: 'none' }}>Add Tenant</Button>
       </div>
 
-      <div className="overflow-x-auto rounded-[10px] border border-line bg-white">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-line bg-white">
+        <div className="min-h-0 flex-1 overflow-auto">
         <Table sx={{ minWidth: 1130 }} size="small">
           <TableHead>
-            <TableRow sx={{ '& th': { fontSize: 11, fontWeight: 600, letterSpacing: '.08em', color: '#6b6b6b', borderBottom: 'none', pb: 0.5, pt: 1.5 } }}>
+            <TableRow ref={headRef} sx={{ '& th': { fontSize: 11, fontWeight: 600, letterSpacing: '.08em', color: '#6b6b6b', borderBottom: 'none', pb: 0.5, pt: 1.5, position: 'sticky', top: 0, zIndex: 3, bgcolor: '#fff' } }}>
               {['CLIENT NAME', 'SUBSCRIPTION', 'PRODUCT PACKAGES', 'STATUS', 'END DATE', 'INTEGRATIONS', ''].map((h) => <TableCell key={h} sx={{ whiteSpace: 'nowrap' }}>{h}</TableCell>)}
             </TableRow>
-            <TableRow sx={{ '& td': { pb: 1.5 } }}>
+            <TableRow sx={{ '& th': { pb: 1.5, fontWeight: 400, position: 'sticky', top: head1, zIndex: 3, bgcolor: '#fff', borderBottom: '1px solid #e6e6e6' } }}>
               <TableCell><TextField placeholder="Search client" value={F.name} onChange={setFk('name')} /></TableCell>
               <TableCell><TextField placeholder="Search ID" value={F.sub} onChange={setFk('sub')} /></TableCell>
               <TableCell>
@@ -142,8 +152,9 @@ export default function TenantsPage() {
             })}
           </TableBody>
         </Table>
+        </div>
         {list.length === 0 && <div className="px-5 py-12 text-center text-[13px] text-[#8a8a8a]">No tenants match your search.</div>}
-        <div className="flex gap-4 px-5 py-3 text-[12.5px] text-muted">
+        <div className="flex flex-none gap-4 border-t border-line px-5 py-3 text-[12.5px] text-muted">
           <span>Showing {list.length} of {tenants.length} tenants</span>
           {hasF && <span onClick={() => setFilters(EMPTY_F)} className="cursor-pointer text-[#111] underline">Clear filters</span>}
         </div>

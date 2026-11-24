@@ -20,7 +20,7 @@ export default createTheme({
     MuiFormHelperText: { styleOverrides: { root: { fontSize: 12, marginLeft: 0 } } },
     MuiOutlinedInput: { styleOverrides: {
       root: { fontSize: 14, backgroundColor: '#fff' },
-      input: { '&::placeholder': { fontSize: 12, opacity: 1, color: '#8a8a8a' } },
+      input: { '&::placeholder': { fontSize: 14, opacity: 1, color: '#8a8a8a' } },
     } },
     MuiMenuItem: { styleOverrides: { root: { fontSize: 14 } } },
     MuiDialog: { styleOverrides: { paper: { borderRadius: 14 } } },

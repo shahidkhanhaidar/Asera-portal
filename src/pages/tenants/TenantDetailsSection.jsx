@@ -4,7 +4,6 @@ import MenuItem from '@mui/material/MenuItem';
 import Switch from '@mui/material/Switch';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-import Button from '@mui/material/Button';
 import CheckCircleIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Visibility from '@mui/icons-material/VisibilityOutlined';
@@ -47,10 +46,11 @@ export default function TenantDetailsSection({ f, setF, errors, tried }) {
                 <div className="flex max-w-[520px] flex-col gap-3.5">
                   <div>
                     <div className="mb-1.5 text-[12.5px] text-muted">Concord Fax link</div>
-                    <div className="flex items-center gap-2">
-                      <TextField value={f.faxUrl} slotProps={{ input: { readOnly: true } }} />
-                      <Button variant="outlined" color="inherit" href={f.faxUrl} target="_blank" rel="noopener" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} sx={{ height: 40, whiteSpace: 'nowrap' }}>Open</Button>
-                    </div>
+                    <a href={f.faxUrl} target="_blank" rel="noopener noreferrer" aria-label="Open Concord Fax website"
+                      className="flex h-10 items-center justify-between gap-2 rounded-lg border border-[#d6d6d6] bg-[#f7f7f7] px-3 text-sm text-[#1a56db] underline-offset-2 hover:underline">
+                      <span className="truncate">{f.faxUrl}</span>
+                      <OpenInNewIcon sx={{ fontSize: 16 }} />
+                    </a>
                     <div className="mt-1.5 text-[12.5px] text-muted">Open the Concord Fax website to set up this tenant's fax account and number.</div>
                   </div>
                   <div className="text-[13px] font-semibold">Fax account details</div>

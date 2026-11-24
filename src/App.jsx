@@ -17,8 +17,8 @@ const LIVE = ['tenant', 'usage'];
 export default function App() {
   const [page, setPage] = useState('tenant');
   return (
-    <div className="flex min-h-screen bg-canvas text-sm text-[#111]">
-      <aside className="sticky top-0 flex h-screen w-[82px] flex-none flex-col items-center bg-ink pb-3 pt-3.5 text-[#c9c9c9]">
+    <div className="flex h-screen overflow-hidden bg-canvas text-sm text-[#111]">
+      <aside className="flex h-screen w-[82px] flex-none flex-col items-center bg-ink pb-3 pt-3.5 text-[#c9c9c9]">
         <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white text-sm font-semibold text-ink">as</div>
         <div className="mt-[5px] text-[8px] tracking-[.14em] text-[#9a9a9a]">SOFTWARE</div>
         <div className="my-3.5 mb-2.5 w-16 border-t border-[#262626]" />
@@ -37,7 +37,7 @@ export default function App() {
           <div className="text-[9px] text-[#b5b5b5]">AS Admin</div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-7 pb-10 pt-[22px]">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-7 pb-5 pt-[22px]">
         {page === 'tenant' ? <TenantsPage /> : <UsagePage />}
       </main>
     </div>

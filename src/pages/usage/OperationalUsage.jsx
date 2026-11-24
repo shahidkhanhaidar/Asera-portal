@@ -10,7 +10,6 @@ import TableBody from '@mui/material/TableBody';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TableSortLabel from '@mui/material/TableSortLabel';
-import TablePagination from '@mui/material/TablePagination';
 import Popover from '@mui/material/Popover';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -29,7 +28,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { OPS_TENANTS, OPS_TEMPLATES, OPS_PERFORMERS, OPS_COLS, opsData } from '../../data/ops';
 
-const PS = 30;
 const GROUP_KEY = { Template: 'tpl', 'Performed By': 'by' };
 const INIT = { sort: { k: 'date', d: -1 }, group: 'None', hide: [], q: '', tpl: '', by: '', page: 0, closed: [], filtersOpen: false };
 
@@ -59,7 +57,6 @@ export default function OperationalUsage() {
       return [{ group: key || 'None', raw: key, count: m[key].length, closed }, ...(closed ? [] : m[key].map((r) => ({ row: r })))];
     });
   }, [rows, gk, s.closed]);
-  const page = Math.min(s.page, Math.max(0, Math.ceil(items.length / PS) - 1));
   const hasFilter = !!(s.q || s.tpl || s.by);
   const flash = (t) => () => setToast(t);
 
@@ -78,7 +75,7 @@ export default function OperationalUsage() {
   const outBtn = { height: 34, bgcolor: '#fff', borderColor: '#d6d6d6', color: '#111' };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
       <div className="flex flex-wrap items-center gap-3">
         <TextField select label="Tenant" value={tenant} onChange={(e) => { setTenant(e.target.value); set({ page: 0 }); }} sx={{ minWidth: 220, width: 'auto', bgcolor: '#fff' }}>
           {OPS_TENANTS.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
@@ -149,8 +146,8 @@ export default function OperationalUsage() {
           </div>
 
           <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <Table size="small" sx={{ minWidth: cols.reduce((a, c) => a + c[2], 0) }}>
+            <div className="overflow-auto" style={{ maxHeight: 'max(320px, calc(100vh - 280px))' }}>
+              <Table stickyHeader size="small" sx={{ minWidth: cols.reduce((a, c) => a + c[2], 0) }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#f7f7f7', '& th': { fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap' } }}>
                     {cols.map(([k, label, w]) => (
@@ -162,7 +159,7 @@ export default function OperationalUsage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {items.slice(page * PS, (page + 1) * PS).map((it, i) => it.group !== undefined ? (
+                  {items.map((it, i) => it.group !== undefined ? (
                     <TableRow key={'g' + it.raw} hover onClick={() => set({ closed: it.closed ? s.closed.filter((z) => z !== it.raw) : [...s.closed, it.raw] })} sx={{ bgcolor: '#efefef', cursor: 'pointer' }}>
                       <TableCell colSpan={cols.length} sx={{ fontWeight: 600 }}>
                         <span className="inline-flex items-center gap-1.5">{it.closed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}{it.group}<span className="font-normal text-muted">{it.count} records</span></span>
@@ -175,8 +172,7 @@ export default function OperationalUsage() {
               </Table>
               {items.length === 0 && <div className="p-10 text-center text-muted">No records match the current filters.</div>}
             </div>
-            <TablePagination component="div" count={items.length} page={page} rowsPerPage={PS} rowsPerPageOptions={[PS]} onPageChange={(_, p) => set({ page: p })}
-              labelDisplayedRows={() => `${rows.length.toLocaleString()} total records`} />
+            <div className="border-t border-line px-4 py-2.5 text-xs text-muted">{rows.length.toLocaleString()} total records</div>
           </div>
         </div>
       )}
