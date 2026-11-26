@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using AseraBackend.Data;
+using AseraBackend.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,9 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<AseraDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+
+builder.Services.AddSingleton<ImpactQueue>();
+builder.Services.AddHostedService<ImpactProcessor>();
 
 // Allow the React dev server (Vite) to call this API.
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
@@ -22,7 +26,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AseraDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
     if (app.Environment.IsDevelopment()) DbSeeder.Seed(db);
 }
 

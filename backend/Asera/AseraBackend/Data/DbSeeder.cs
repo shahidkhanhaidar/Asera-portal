@@ -15,6 +15,75 @@ public static class DbSeeder
 
     public static void Seed(AseraDbContext db)
     {
+        SeedTenants(db);
+        SeedAnalytics(db);
+    }
+
+    private static void SeedAnalytics(AseraDbContext db)
+    {
+        if (!db.CptCosts.Any())
+        {
+            var updated = DateTime.UtcNow.AddDays(-12);
+            (string Code, string Desc, decimal Value)[] costs =
+            [
+                ("93975", "Duplex scan, complete", 285), ("93976", "Duplex scan, limited", 160),
+                ("76805", "OB US ≥14 wks, complete", 190), ("76816", "OB US, follow-up / limited", 120),
+                ("76817", "OB US, transvaginal", 95), ("76801", "OB US <14 wks, single gestation", 175),
+                ("76811", "OB US, detailed fetal anatomy", 260), ("76818", "Fetal biophysical profile", 110),
+                ("59025", "Fetal non-stress test", 65), ("76856", "Pelvic US, complete", 150),
+                ("76830", "Transvaginal US", 140), ("76825", "Fetal echocardiography", 310),
+            ];
+            db.CptCosts.AddRange(costs.Select(c => new CptCost { Code = c.Code, Description = c.Desc, DefaultValue = c.Value, UpdatedAt = updated }));
+            db.SaveChanges();
+        }
+
+        if (!db.TenantCptOverrides.Any())
+        {
+            var ids = db.Tenants.ToDictionary(t => t.Name, t => t.Id);
+            (string Code, string[] Tenants)[] overrides =
+            [
+                ("93975", ["tenanta", "tenantab"]), ("76805", ["qatestone"]),
+                ("76811", ["qatesttwo", "tenantab", "qatestfive"]), ("76830", ["tenanta"]),
+            ];
+            foreach (var (code, names) in overrides)
+                foreach (var n in names.Where(ids.ContainsKey))
+                    db.TenantCptOverrides.Add(new TenantCptOverride { TenantId = ids[n], CptCode = code, Value = db.CptCosts.First(c => c.Code == code).DefaultValue + 15 });
+            db.SaveChanges();
+        }
+
+        if (!db.ImpactRuns.Any())
+        {
+            var now = DateTime.UtcNow;
+            ImpactRun Run(int daysAgo, string tenant, bool pro, string model, int mv, string status, decimal cost, string? reason = null)
+            {
+                var run = new ImpactRun
+                {
+                    CreatedAt = now.AddDays(-daysAgo), TenantName = tenant, IsProspect = pro, Model = model, ModelVersion = mv,
+                    Status = status, SubscriptionCost = cost, FailureReason = reason, FileName = "encounters.xlsx",
+                };
+                if (status == RunStatuses.Completed)
+                {
+                    run.EncountersAnalyzed = 12519;
+                    run.RevenueCaptured = 852012m * (0.8m + (daysAgo % 35) / 100m);
+                    run.RevenueCaptured = Math.Round(run.RevenueCaptured.Value / 100m) * 100m;
+                    run.DenialsPrevented = Math.Round(run.RevenueCaptured.Value * 0.33m / 100m) * 100m;
+                    run.CompletedAt = run.CreatedAt.AddSeconds(5);
+                }
+                return run;
+            }
+            db.ImpactRuns.AddRange(
+                Run(45, "Granite Women's Care", true, "Global", 2, RunStatuses.Completed, 84000),
+                Run(54, "tenantab", false, "Central", 2, RunStatuses.Completed, 96000),
+                Run(47, "tenanta", false, "Central", 2, RunStatuses.Completed, 120000),
+                Run(36, "tenantab", false, "Global", 3, RunStatuses.Completed, 96000),
+                Run(1, "tenanta", false, "Global", 3, RunStatuses.Completed, 120000),
+                Run(0, "tenanta", false, "Global", 3, RunStatuses.Failed, 120000, "Required column CPT Codes is empty in 212 rows."));
+            db.SaveChanges();
+        }
+    }
+
+    private static void SeedTenants(AseraDbContext db)
+    {
         if (db.Tenants.Any()) return;
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 

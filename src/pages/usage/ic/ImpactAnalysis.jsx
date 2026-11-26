@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import IconButton from '@mui/material/IconButton';
@@ -22,19 +22,14 @@ import ErrorIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import ScheduleIcon from '@mui/icons-material/ScheduleOutlined';
 import { SortHead, ColSearch } from './CostSheet';
 import { downloadSheet } from '../../../lib/download';
-import { IMPACT_RUNS, IMPACT_TENANTS, MODELS, modelLabel, modelVersion, BM } from '../../../data/icDesign';
+import { modelLabel } from '../../../data/icDesign';
+import { impactApi } from '../../../lib/api';
 
 const COLS = '130px minmax(170px,1.4fr) 190px 110px 150px 110px';
 const DEFAULT_COST = '120000';
 const labelCls = 'mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[.08em] text-[#6b6b6b]';
 const fmtDate = (d) => { const m = /^(\d{4})-(\d\d)-(\d\d)/.exec(d); return m ? `${m[2]}/${m[3]}/${m[1]}` : d; };
-const stamp = () => { const n = new Date(), p = (x) => String(x).padStart(2, '0'); return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; };
 const usd = (v) => '$' + Math.round(v).toLocaleString();
-const metrics = (r) => {
-  let h = 0; for (const ch of r.tenant + r.model + r.mv + r.date) h = (h * 31 + ch.charCodeAt(0)) % 1000;
-  const cap = Math.round((BM.rev * (0.8 + (h % 35) / 100)) / 100) * 100, den = Math.round((cap * 0.33) / 100) * 100;
-  return { cap, den, tot: cap + den };
-};
 const STATUS = {
   Queued: [ScheduleIcon, '#8a6d1a'], Processing: [null, '#555'], Completed: [CheckCircleIcon, '#1a9b57'], Failed: [ErrorIcon, '#c0392b'],
 };
@@ -49,7 +44,7 @@ function ActionIcon({ label, disabled, onClick, children }) {
   );
 }
 
-function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
+function ImportDialog({ rerun, busy, onClose, onSubmit, options, models }) {
   const locked = !!rerun;
   const [tenant, setTenant] = useState(rerun ? rerun.tenant : '');
   const [model, setModel] = useState(rerun ? rerun.model : 'Global');
@@ -61,8 +56,8 @@ function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
 
   const names = useMemo(() => {
     const seen = new Set();
-    return [...IMPACT_TENANTS, ...prospects.map((p) => [p, 'Prospect'])].filter(([n]) => !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
-  }, [prospects]);
+    return options.filter(([n]) => !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+  }, [options]);
   const q = tenant.trim().toLowerCase();
   const hit = names.find((n) => n[0].toLowerCase() === q);
   const isPro = !hit || hit[1] === 'Prospect';
@@ -74,7 +69,7 @@ function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
     if (f.size > 10 * 1024 * 1024) return setToast('File is larger than 10 MB');
     if (f.size === 0) return setToast('The file is empty');
     if (!/\.xlsx$/i.test(f.name)) return setToast('Only XLSX files are accepted');
-    setFile({ name: f.name, size: `${Math.max(1, Math.round(f.size / 1024))} KB` });
+    setFile({ name: f.name, size: `${Math.max(1, Math.round(f.size / 1024))} KB`, raw: f });
   };
   const filterOptions = (opts, { inputValue }) => {
     const v = inputValue.trim().toLowerCase();
@@ -84,7 +79,7 @@ function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
     if (!exact) return [...list, { name: inputValue.trim(), add: 'typed' }];
     return list;
   };
-  const submit = () => ok && !busy && onSubmit({ tenant: tenant.trim(), pro: isPro, model, cost: +cost, file: file.name, rerunOf: rerun?.id });
+  const submit = () => ok && !busy && onSubmit({ tenant: tenant.trim(), pro: isPro, model, cost: +cost, file: file.name, raw: file.raw, rerunOf: rerun?.id });
 
   return (
     <Dialog open onClose={onClose} slotProps={{ paper: { style: { width: 560, maxWidth: '100%', borderRadius: 16 } } }}>
@@ -123,7 +118,7 @@ function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
         <div>
           <div className={labelCls}>Model<Tooltip title="Model version used for this run (audit)"><InfoIcon sx={{ fontSize: 14, cursor: 'help' }} /></Tooltip></div>
           <Select fullWidth value={model} onChange={(e) => setModel(e.target.value)}>
-            {MODELS.map(([m, v]) => <MenuItem key={m} value={m}>{modelLabel(m, v)}</MenuItem>)}
+            {models.map(([m, v]) => <MenuItem key={m} value={m}>{modelLabel(m, v)}</MenuItem>)}
           </Select>
           <div className="mt-1 text-xs text-[#6b6b6b]">{locked ? 'Only the model can change on a re-run.' : 'Default model is set by an AS admin.'}</div>
         </div>
@@ -155,8 +150,11 @@ function ImportDialog({ rerun, busy, onClose, onSubmit, prospects }) {
 }
 
 export default function ImpactAnalysis() {
-  const [runs, setRuns] = useState(IMPACT_RUNS);
-  const [prospects, setProspects] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [options, setOptions] = useState([]);
+  const [models, setModels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [dialog, setDialog] = useState(null); // null | { rerun?: run }
   const [f, setF] = useState({ date: '', tenant: '', model: '', by: '', status: '' });
   const [sort, setSort] = useState(null);
@@ -164,22 +162,43 @@ export default function ImpactAnalysis() {
   const busy = runs.some((r) => r.status === 'Queued' || r.status === 'Processing');
   const job = runs.find((r) => r.status === 'Queued' || r.status === 'Processing');
 
-  const setStatus = (id, status) => setRuns((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
-  const submit = ({ tenant, pro, model, cost, file }) => {
-    const id = Date.now();
-    setRuns((rs) => [{ id, date: stamp(), tenant, pro, model, mv: modelVersion(model), by: 'AS Admin', status: 'Queued', file, cost }, ...rs]);
-    if (pro) setProspects((p) => (p.some((x) => x.toLowerCase() === tenant.toLowerCase()) ? p : [...p, tenant]));
-    setDialog(null);
-    setTimeout(() => setStatus(id, 'Processing'), 1500);
-    setTimeout(() => setStatus(id, 'Completed'), 5000);
+  const loadRuns = () => impactApi.runs().then(setRuns);
+  const load = () => {
+    setLoading(true); setLoadError('');
+    Promise.all([loadRuns(), impactApi.tenants().then(setOptions), impactApi.models().then(setModels)])
+      .catch((e) => setLoadError(e.message)).finally(() => setLoading(false));
   };
-  const exportRun = (r) => {
-    const m = metrics(r);
-    downloadSheet([
-      ['Projected Impact Analysis · Intelligent Coding'], ['Tenant or prospect', r.tenant], ['Model', modelLabel(r.model, r.mv)], ['Run by', r.by], ['Run date', fmtDate(r.date)], [],
-      ['Metric', 'Value', 'Unit'], ['Revenue captured', m.cap, 'USD'], ['Denials prevented', m.den, 'USD'], ['Total projected impact', m.tot, 'USD'], ['Encounters analyzed', BM.enc, 'count'],
-    ], `projected-impact-${r.tenant.replace(/\W+/g, '-').toLowerCase()}`, 'csv');
-    setToast('Exported as CSV');
+  useEffect(load, []);
+  // While an analysis is running, check on it every 2 seconds.
+  useEffect(() => {
+    if (!busy) return undefined;
+    const t = setInterval(() => loadRuns().catch(() => {}), 2000);
+    return () => clearInterval(t);
+  }, [busy]);
+
+  const submit = async ({ tenant, model, cost, raw, rerunOf }) => {
+    try {
+      if (rerunOf) await impactApi.rerun(rerunOf, model);
+      else await impactApi.importRun({ tenant, model, cost, raw });
+      setDialog(null);
+      await loadRuns();
+      impactApi.tenants().then(setOptions).catch(() => {});
+    } catch (e) {
+      setToast(e.message);
+      loadRuns().catch(() => {});
+    }
+  };
+  const exportRun = async (r) => {
+    try {
+      const m = await impactApi.results(r.id);
+      downloadSheet([
+        ['Projected Impact Analysis · Intelligent Coding'], ['Tenant or prospect', r.tenant], ['Model', modelLabel(r.model, r.mv)], ['Run by', r.by], ['Run date', fmtDate(r.date)], [],
+        ['Metric', 'Value', 'Unit'], ['Revenue captured', m.revenueCaptured, 'USD'], ['Denials prevented', m.denialsPrevented, 'USD'], ['Total projected impact', m.totalProjectedImpact, 'USD'], ['Encounters analyzed', m.encountersAnalyzed, 'count'],
+      ], `projected-impact-${r.tenant.replace(/\W+/g, '-').toLowerCase()}`, 'csv');
+      setToast('Exported as CSV');
+    } catch (e) {
+      setToast(e.message);
+    }
   };
   const template = () => {
     downloadSheet([['Encounter ID', 'Encounter Date', 'Study Type', 'CPT Codes', 'ICD-10 Codes', 'Billed Amount', 'Denied']], 'projected-impact-template', 'csv');
@@ -261,11 +280,13 @@ export default function ImpactAnalysis() {
                 </div>
               );
             })}
-            {rows.length === 0 && <div className="px-5 py-7 text-[13px] text-[#6b6b6b]">No runs match the filters.</div>}
+            {loading && <div className="px-5 py-7 text-[13px] text-[#6b6b6b]">Loading history…</div>}
+            {loadError && <div className="px-5 py-7 text-[13px] text-[#c0392b]">{loadError} <span onClick={load} className="cursor-pointer text-[#111] underline">Try again</span></div>}
+            {!loading && !loadError && rows.length === 0 && <div className="px-5 py-7 text-[13px] text-[#6b6b6b]">No runs match the filters.</div>}
           </div>
         </div>
       </div>
-      {dialog && <ImportDialog rerun={dialog.rerun} busy={busy} prospects={prospects} onClose={() => setDialog(null)} onSubmit={submit} />}
+      {dialog && <ImportDialog rerun={dialog.rerun} busy={busy} options={options} models={models} onClose={() => setDialog(null)} onSubmit={submit} />}
       <Snackbar open={!!toast} autoHideDuration={2400} onClose={() => setToast('')} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </div>
   );

@@ -65,3 +65,33 @@ export const tenantsApi = {
   update: async (id, f) => fromApi(await request(`/api/tenants/${id}/subscription`, { method: 'PUT', body: JSON.stringify(toUpdateBody(f)) })),
   cancel: async (id) => fromApi(await request(`/api/tenants/${id}/cancel`, { method: 'POST' })),
 };
+
+// SQLite returns timestamps without a zone; they are UTC.
+const asUtc = (s) => (s && !/[zZ]$|[+-]\d\d:\d\d$/.test(s) ? `${s}Z` : s);
+const stamp = (s) => {
+  const d = new Date(asUtc(s)), p = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fromRun = (r) => ({
+  id: r.id, date: stamp(r.createdAt), tenant: r.tenant, pro: r.isProspect, model: r.model, mv: r.modelVersion,
+  by: r.runBy, status: r.status, reason: r.failureReason, cost: r.subscriptionCost, file: r.fileName,
+});
+
+export const costsApi = {
+  get: () => request('/api/cpt-costs'),
+  impact: (changes) => request('/api/cpt-costs/impact', { method: 'POST', body: JSON.stringify({ changes }) }),
+  save: (changes) => request('/api/cpt-costs', { method: 'PUT', body: JSON.stringify({ changes }) }),
+};
+
+export const impactApi = {
+  models: async () => (await request('/api/impact/models')).map((m) => [m.name, m.version]),
+  tenants: async () => (await request('/api/impact/tenants')).map((t) => [t.name, t.kind]),
+  runs: async () => (await request('/api/impact/runs')).map(fromRun),
+  results: (id) => request(`/api/impact/runs/${id}/results`),
+  importRun: async ({ tenant, model, cost, raw }) => {
+    const fd = new FormData();
+    fd.append('tenant', tenant); fd.append('model', model); fd.append('subscriptionCost', String(cost)); fd.append('file', raw);
+    return fromRun(await request('/api/impact/runs', { method: 'POST', body: fd, headers: {} }));
+  },
+  rerun: async (id, model) => fromRun(await request(`/api/impact/runs/${id}/rerun`, { method: 'POST', body: JSON.stringify({ model }) })),
+};
