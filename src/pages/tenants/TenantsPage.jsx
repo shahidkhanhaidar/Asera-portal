@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
@@ -16,13 +16,15 @@ import StatusChip from '../../components/StatusChip';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import TenantDialog from './TenantDialog';
 import TenantViewDialog from './TenantViewDialog';
-import { seedTenants, defaultNotifications } from '../../data/tenants';
+import { defaultNotifications } from '../../data/tenants';
+import { tenantsApi } from '../../lib/api';
 import { PKG, STATUSES, pkLabels } from '../../data/packages';
 import { TODAY, addYears } from '../../lib/dates';
 
-const blank = (count) => ({
+const nextSub = (list) => `SUB-${Math.max(10420, ...list.map((t) => +t.sub.replace('SUB-', '') || 0)) + 1}`;
+const blank = (list) => ({
   name: '', domain: '', fax: '', faxOn: false, faxUrl: 'https://www.concordfax.com/', faxUser: '', faxPass: '', faxNum: '',
-  hl7: '', hl7On: false, pacs: '', pacsOn: false, corp: false, sub: `SUB-${10448 + count}`,
+  hl7: '', hl7On: false, pacs: '', pacsOn: false, corp: false, sub: nextSub(list),
   start: TODAY, end: addYears(TODAY, 1), term: '1', grace: 30, status: 'Active', pk: [], n: defaultNotifications(),
 });
 const toForm = (t) => ({
@@ -36,7 +38,15 @@ const lc = (x) => (x || '').toLowerCase();
 const EMPTY_F = { name: '', sub: '', pk: '', status: '', integ: '' };
 
 export default function TenantsPage() {
-  const [tenants, setTenants] = useState(seedTenants);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const load = () => {
+    setLoading(true); setLoadError('');
+    tenantsApi.list().then(setTenants).catch((e) => setLoadError(e.message)).finally(() => setLoading(false));
+  };
+  useEffect(load, []);
   const [F, setFilters] = useState(EMPTY_F);
   const headRef = useRef(null);
   const [head1, setHead1] = useState(34);
@@ -60,24 +70,40 @@ export default function TenantsPage() {
     (!F.integ || lc(integText(t)).includes(lc(F.integ)))), [tenants, F]);
 
   const settingUp = () => setToast('This tenant is still being set up. It can be opened once it is Active.');
-  const save = (f, editId) => {
+  const save = async (f, editId) => {
     const isAdd = !editId;
-    const rec = { name: f.name.trim(), domain: f.domain.trim(), sub: f.sub, status: isAdd ? 'Processing' : f.status, start: f.start, end: f.end, pk: f.pk, grace: +f.grace || 0,
-      fax: f.faxOn ? 'Concord Fax' : '', faxUrl: f.faxUrl, faxUser: f.faxOn ? f.faxUser.trim() : '', faxPass: f.faxOn ? f.faxPass : '', faxNum: f.faxOn ? f.faxNum.trim() : '',
-      hl7: f.hl7On ? f.hl7 : '', pacs: f.pacsOn ? f.pacs : '', corp: f.corp, n: f.n };
-    setTenants((s) => isAdd ? [rec, ...s] : s.map((t) => (t.sub === editId ? { ...t, ...rec, name: t.name, domain: t.domain, sub: t.sub } : t)));
-    if (isAdd) setTimeout(() => setTenants((s) => s.map((x) => (x.sub === rec.sub ? { ...x, status: f.status } : x))), 7000);
-    setDialog(null);
-    setToast(isAdd ? `Tenant ${rec.name} added. Setting up, this row is locked until it is Active.` : 'Subscription updated');
+    setSaving(true);
+    try {
+      if (isAdd) {
+        const rec = await tenantsApi.create(f);
+        setTenants((s) => [rec, ...s]);
+        setToast(`Tenant ${rec.name} added`);
+      } else {
+        const cur = tenants.find((t) => t.sub === editId);
+        const rec = await tenantsApi.update(cur.id, f);
+        setTenants((s) => s.map((t) => (t.id === rec.id ? rec : t)));
+        setToast('Subscription updated');
+      }
+      setDialog(null);
+    } catch (e) {
+      setToast(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
   const onSubmit = (f) => {
     const cur = tenants.find((x) => x.sub === dialog.editId);
     if (dialog.mode === 'update' && cur && cur.status === 'Active' && f.status !== 'Active') setConfirm({ kind: 'status', form: f });
     else save(f, dialog.editId);
   };
-  const doCancel = (sub) => {
-    setTenants((s) => s.map((t) => (t.sub === sub ? { ...t, status: 'Cancelled' } : t)));
-    setConfirm(null); setDialog(null); setToast('Subscription and tenant cancelled');
+  const doCancel = async (sub) => {
+    try {
+      const rec = await tenantsApi.cancel(tenants.find((t) => t.sub === sub).id);
+      setTenants((s) => s.map((t) => (t.id === rec.id ? rec : t)));
+      setConfirm(null); setDialog(null); setToast('Subscription and tenant cancelled');
+    } catch (e) {
+      setConfirm(null); setToast(e.message);
+    }
   };
 
   const confirmTenant = confirm && tenants.find((t) => t.sub === (confirm.sub || dialog?.editId));
@@ -91,7 +117,7 @@ export default function TenantsPage() {
           <div className="mt-[3px] text-[13px] text-muted">Onboard and manage customer environments, with their subscription and product packages.</div>
         </div>
         <div className="flex-1" />
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ mode: 'add', initial: blank(tenants.length) })} sx={{ height: 38, whiteSpace: 'nowrap', flex: 'none' }}>Add Tenant</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ mode: 'add', initial: blank(tenants) })} sx={{ height: 38, whiteSpace: 'nowrap', flex: 'none' }}>Add Tenant</Button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-line bg-white">
@@ -153,7 +179,13 @@ export default function TenantsPage() {
           </TableBody>
         </Table>
         </div>
-        {list.length === 0 && <div className="px-5 py-12 text-center text-[13px] text-[#8a8a8a]">No tenants match your search.</div>}
+        {loading && <div className="px-5 py-12 text-center text-[13px] text-[#8a8a8a]">Loading tenants…</div>}
+        {loadError && (
+          <div className="px-5 py-12 text-center text-[13px] text-[#c0392b]">
+            {loadError} <span onClick={load} className="cursor-pointer text-[#111] underline">Try again</span>
+          </div>
+        )}
+        {!loading && !loadError && list.length === 0 && <div className="px-5 py-12 text-center text-[13px] text-[#8a8a8a]">No tenants match your search.</div>}
         <div className="flex flex-none gap-4 border-t border-line px-5 py-3 text-[12.5px] text-muted">
           <span>Showing {list.length} of {tenants.length} tenants</span>
           {hasF && <span onClick={() => setFilters(EMPTY_F)} className="cursor-pointer text-[#111] underline">Clear filters</span>}
@@ -162,7 +194,7 @@ export default function TenantsPage() {
 
       {dialog && (
         <TenantDialog key={dialog.editId || 'add'} mode={dialog.mode} initial={dialog.initial} tenants={tenants}
-          onClose={() => setDialog(null)} onSubmit={onSubmit} onInvalid={() => setToast('Fix the highlighted details to continue')}
+          saving={saving} onClose={() => setDialog(null)} onSubmit={onSubmit} onInvalid={() => setToast('Fix the highlighted details to continue')}
           onAskCancel={() => setConfirm({ kind: 'cancel', sub: dialog.editId })} />
       )}
       {view && <TenantViewDialog tenant={view} onClose={() => setView(null)} />}

@@ -19,7 +19,7 @@ const STEPS = [
 ];
 
 /** mode 'add' = 3-step wizard; mode 'update' = single dialog (subscription + notifications). */
-export default function TenantDialog({ mode, initial, tenants, onClose, onSubmit, onAskCancel, onInvalid }) {
+export default function TenantDialog({ mode, initial, tenants, onClose, onSubmit, onAskCancel, onInvalid, saving }) {
   const isAdd = mode === 'add';
   const [f, setFull] = useState(initial);
   const [step, setStep] = useState(isAdd ? 1 : 2);
@@ -117,7 +117,7 @@ export default function TenantDialog({ mode, initial, tenants, onClose, onSubmit
         </Button>
         {isAdd && !last && <Button variant="contained" onClick={next}>Next</Button>}
         {((isAdd && last) || (!isAdd && !cancelled)) && (
-          <Button variant="contained" onClick={submit}>{isAdd ? 'Create tenant' : 'Update'}</Button>
+          <Button variant="contained" onClick={submit} disabled={saving}>{saving ? 'Saving…' : isAdd ? 'Create tenant' : 'Update'}</Button>
         )}
       </div>
     </Dialog>

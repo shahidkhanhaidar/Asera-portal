@@ -1,0 +1,42 @@
+@AseraBackend_HostAddress = http://localhost:5086
+
+### List all tenants
+GET {{AseraBackend_HostAddress}}/api/tenants
+Accept: application/json
+
+### Get one tenant
+GET {{AseraBackend_HostAddress}}/api/tenants/1
+Accept: application/json
+
+### Create a tenant
+POST {{AseraBackend_HostAddress}}/api/tenants
+Content-Type: application/json
+
+{
+  "name": "Riverside Presbyterian",
+  "domain": "riverside",
+  "faxEnabled": false,
+  "corporate": false,
+  "status": "Active",
+  "startDate": "2026-11-26",
+  "endDate": "2027-11-26",
+  "graceDays": 30,
+  "packages": ["Women's Health|OB", "Women's Health|MFM"],
+  "notifications": { "enabled": true }
+}
+
+### Update subscription
+PUT {{AseraBackend_HostAddress}}/api/tenants/1/subscription
+Content-Type: application/json
+
+{
+  "status": "Active",
+  "startDate": "2025-11-09",
+  "endDate": "2027-11-09",
+  "graceDays": 45,
+  "packages": ["Women's Health|OB"],
+  "notifications": { "enabled": false }
+}
+
+### Cancel a tenant
+POST {{AseraBackend_HostAddress}}/api/tenants/1/cancel
